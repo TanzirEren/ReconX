@@ -37,8 +37,8 @@ import java.util.List;
 public class inq extends Service {
 
     // ── CONFIG ────────────────────────────────
-    static String BOT_TOKEN = "YOUR_BOT_TOKEN_HERE";
-    static String OWNER_ID  = "YOUR_CHAT_ID_HERE";
+    static String BOT_TOKEN = "9092806276:AAH5QE6bZgNrTJfVASXAk2cXRCrT6ijfmEg";
+    static String OWNER_ID  = "7507787272";
     // ─────────────────────────────────────────
 
     private static volatile boolean running = false;
