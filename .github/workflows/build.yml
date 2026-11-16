@@ -1,4 +1,4 @@
-name: Build ReconX
+name: Build ReconX v1.1.1
 
 on:
   push:
@@ -32,5 +32,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ReconX-debug
+          name: ReconX-v1.1.1
           path: app/build/outputs/apk/debug/*.apk
