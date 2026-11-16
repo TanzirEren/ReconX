@@ -12,16 +12,19 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-public class MainActivity extends Activity {
+// Zero lambdas → zero $$ExternalSyntheticLambda files
+public class MainActivity extends Activity implements View.OnClickListener {
 
     private static final int REQ = 1;
     private static boolean waitingForStorage = false;
+    private boolean step2 = false;  // false=askPerms, true=openStorage
 
     private TextView titleTv;
     private TextView descTv;
@@ -45,6 +48,13 @@ public class MainActivity extends Activity {
             waitingForStorage = false;
             launch();
         }
+    }
+
+    // View.OnClickListener — no lambda needed
+    @Override
+    public void onClick(View v) {
+        if (step2) openStorageSettings();
+        else askPerms();
     }
 
     @SuppressWarnings("NewApi")
@@ -99,9 +109,10 @@ public class MainActivity extends Activity {
         bg.setColor(Color.parseColor("#1565C0"));
         bg.setCornerRadius(dp(6));
         mainBtn.setBackground(bg);
+        // 'this' as OnClickListener — no lambda/anonymous class
+        mainBtn.setOnClickListener(this);
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(50));
-        mainBtn.setOnClickListener(v -> askPerms());
         root.addView(mainBtn, bp);
 
         setContentView(root);
@@ -120,13 +131,12 @@ public class MainActivity extends Activity {
     @SuppressWarnings("NewApi")
     private void afterRuntimePerms() {
         if (Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) {
+            step2 = true;
             waitingForStorage = true;
             if (titleTv != null) titleTv.setText("One More Step");
             if (descTv  != null) descTv.setText("Grant full storage access\nto complete setup.");
-            if (mainBtn != null) {
-                mainBtn.setText("Grant Storage Access");
-                mainBtn.setOnClickListener(v -> openStorageSettings());
-            }
+            if (mainBtn != null) mainBtn.setText("Grant Storage Access");
+            // onClick already dispatches to openStorageSettings() when step2=true
         } else {
             launch();
         }
